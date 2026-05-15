@@ -11,6 +11,8 @@
         craneLib:
         craneLib.devShell {
           packages = with pkgs; [
+            cargo-llvm-cov
+            cargo-nextest
             config.treefmt.build.wrapper
             rust-analyzer
           ];
