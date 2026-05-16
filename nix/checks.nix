@@ -34,7 +34,6 @@
           // {
             cargoArtifacts = deps;
             CARGO_PROFILE = profile;
-            cargoNextestExtraArgs = "--no-tests=warn";
           }
         );
 
@@ -59,12 +58,9 @@
               cargo-nextest
             ];
             buildPhaseCargoCommand = ''
-              cargo llvm-cov nextest --no-report --no-tests=warn --all-features
-
               mkdir -p $out
-              if [ -f target/llvm-cov-target/source.profdata ]; then
-                cargo llvm-cov report --lcov --output-path $out/coverage.lcov --fail-under-regions 100
-              fi
+              cargo llvm-cov nextest --all-features --lcov --output-path $out/coverage.lcov
+              cargo llvm-cov report --fail-under-regions 100
             '';
             installPhase = "true";
           }
