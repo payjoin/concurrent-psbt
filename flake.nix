@@ -16,6 +16,7 @@
       imports = [
         ./nix/apps.nix
         ./nix/checks.nix
+        ./nix/devshell.nix
         ./nix/treefmt.nix
       ];
     };
