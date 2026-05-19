@@ -1,0 +1,28 @@
+name: Cargo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [stable, nightly]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-nextest
+      - run: cargo nextest run --no-tests=warn
+      # Warn-only: this toolchain is rolling (not pinned), which may cause
+      # unrelated PRs to start failing due to nightly containing new lints.
+      # Nix clippy checks in ci.yml, which pins the toolchain via a flake.lock,
+      # and `just clippy` both use -D warnings
+      - if: matrix.toolchain == 'nightly'
+        run: cargo clippy --all-targets --all-features -- -W clippy::all
