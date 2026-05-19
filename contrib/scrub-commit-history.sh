@@ -13,6 +13,8 @@ Options:
   -h, --help          show this help
   --log=jj|git        VCS for revset resolution (default: jj if available, else git)
   --git               alias for --log=git
+  --log-revset        use the VCS's own default revset (skip default range)
+  --everything        scrub all branches (jj: all() ~ root(); git: --all)
 
 Extra arguments are passed through as-is to jj log or git rev-list.
 A single bookmark/branch name or commit hash works in both modes.
@@ -26,12 +28,16 @@ EOF
 
 log_args=()
 vcs_mode=auto
+everything=false
+use_log_revset=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
   -h | --help) usage ;;
   --log=*) vcs_mode="${1#--log=}" ;;
   --git) vcs_mode=git ;;
+  --everything) everything=true ;;
+  --log-revset) use_log_revset=true ;;
   *) log_args+=("$1") ;;
   esac
   shift
@@ -55,12 +61,33 @@ jj | git) ;;
   ;;
 esac
 
+# --everything / --log-revset: validate and expand
+if [ "$everything" = true ]; then
+  if [ ${#log_args[@]} -gt 0 ] || [ "$use_log_revset" = true ]; then
+    echo "error: --everything cannot be combined with explicit revsets or --log-revset" >&2
+    exit 1
+  fi
+  if [ "$vcs_mode" = jj ]; then
+    log_args=(-r 'all() ~ root()')
+  else
+    log_args=(--all)
+  fi
+elif [ "$use_log_revset" = true ]; then
+  if [ ${#log_args[@]} -gt 0 ]; then
+    echo "error: --log-revset cannot be combined with explicit revsets" >&2
+    exit 1
+  fi
+fi
+
 # Resolve revsets to git commit IDs
 if [ "$vcs_mode" = jj ]; then
   if [ ${#log_args[@]} -gt 0 ]; then
     jj_args=(log --ignore-working-copy --no-graph -T 'commit_id ++ "\n"')
     jj_args+=("${log_args[@]}")
     mapfile -t linear < <(jj "${jj_args[@]}" 2>/dev/null | grep -vE '^0*$')
+  elif [ "$use_log_revset" = true ]; then
+    # Use jj's configured default log revset (no -r flag)
+    mapfile -t linear < <(jj log --ignore-working-copy --no-graph -T 'commit_id ++ "\n"' 2>/dev/null | grep -vE '^0*$')
   else
     # Default: all ancestors of working copy (excluding root)
     mapfile -t linear < <(jj log --ignore-working-copy --no-graph -r 'trunk()..@' -T 'commit_id ++ "\n"' 2>/dev/null | grep -vE '^0*$')
@@ -68,6 +95,8 @@ if [ "$vcs_mode" = jj ]; then
 else
   if [ ${#log_args[@]} -gt 0 ]; then
     mapfile -t linear < <(git rev-list "${log_args[@]}" 2>/dev/null)
+  elif [ "$use_log_revset" = true ]; then
+    mapfile -t linear < <(git rev-list HEAD 2>/dev/null)
   else
     merge_base=$(git merge-base HEAD origin/main 2>/dev/null || true)
     if [ -n "$merge_base" ]; then
