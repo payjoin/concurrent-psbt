@@ -19,3 +19,7 @@ fmt:
 # Run tests via cargo-nextest
 test:
     cargo nextest run --no-tests=warn
+
+# Run clippy lints
+clippy:
+    cargo clippy --all-targets --all-features -- -D warnings
