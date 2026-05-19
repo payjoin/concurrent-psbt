@@ -15,3 +15,7 @@ lint:
 # Auto-format all files
 fmt:
     nix fmt
+
+# Run tests via cargo-nextest
+test:
+    cargo nextest run --no-tests=warn
