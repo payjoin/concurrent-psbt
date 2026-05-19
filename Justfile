@@ -23,3 +23,7 @@ test:
 # Run clippy lints
 clippy:
     cargo clippy --all-targets --all-features -- -D warnings
+
+# Build nix coverage check
+coverage:
+    nom build --no-update-lock-file '.#checks.{{ system }}.coverage'
