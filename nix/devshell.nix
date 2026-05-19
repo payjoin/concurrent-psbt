@@ -14,6 +14,7 @@
             cargo-llvm-cov
             cargo-nextest
             config.treefmt.build.wrapper
+            just
             rust-analyzer
           ];
         };
