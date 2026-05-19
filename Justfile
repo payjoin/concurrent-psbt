@@ -27,3 +27,8 @@ clippy:
 # Build nix coverage check
 coverage:
     nom build --no-update-lock-file '.#checks.{{ system }}.coverage'
+
+# Scrub history: quick check + message hygiene for every commit
+scrub:
+    jj git export
+    nix run --no-update-lock-file .#scrub-commit-history
