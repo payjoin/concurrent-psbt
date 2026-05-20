@@ -21,6 +21,7 @@ Options:
   --check NAME          run only named check(s) (repeatable; default: all checks)
   --all-checks          run all checks (error if --check also given)
   --no-flake-checks     skip flake build checks (message-only mode)
+  --no-nom              disable nix-output-monitor (default: use nom on tty)
   --no-skip-missing     fail commits missing a named check (default: skip them)
   --keep-going          pass --keep-going to nix (build unrelated targets despite failures)
   --log=jj|git          VCS for revset resolution (default: jj if available, else git)
@@ -66,6 +67,7 @@ while [ $# -gt 0 ]; do
     check_names+=("$1")
     ;;
   --no-flake-checks) run_flake_checks=false ;;
+  --no-nom) use_nom=false ;;
   -k | --keep-going | -L | --print-build-logs) nix_build_args+=("$1") ;;
   *) log_args+=("$1") ;;
   esac
@@ -97,9 +99,28 @@ jj | git) ;;
   ;;
 esac
 
+# Use nom (nix-output-monitor) when available and on a tty, unless --no-nom
+if [ "${use_nom-unset}" = unset ]; then
+  use_nom=false
+  if [ -t 1 ] && command -v nom >/dev/null 2>&1; then
+    use_nom=true
+  fi
+fi
+if [ "$use_nom" = true ]; then
+  nix_cmd=(nom)
+else
+  nix_cmd=(nix)
+fi
+
 # --- Nix helpers ---
-nix_build() { nix build --no-update-lock-file "${nix_build_args[@]}" "$@" --no-link; }
-nix_flake_check() { nix flake check --no-update-lock-file "${nix_build_args[@]}" "$@"; }
+nix_build() { "${nix_cmd[@]}" build --no-update-lock-file "${nix_build_args[@]}" "$@" --no-link; }
+nix_flake_check() {
+  if [ "$use_nom" = true ]; then
+    nix flake check --no-update-lock-file "${nix_build_args[@]}" "$@" --log-format internal-json |& nom --json
+  else
+    nix flake check --no-update-lock-file "${nix_build_args[@]}" "$@"
+  fi
+}
 check_exists() { nix eval --no-update-lock-file "$1" --apply 'x: true' >/dev/null 2>/dev/null; }
 should_check() { [ "$no_skip_missing" = true ] || check_exists "$1"; }
 

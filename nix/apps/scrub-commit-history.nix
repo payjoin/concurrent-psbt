@@ -7,6 +7,7 @@
         runtimeInputs = with pkgs; [
           git
           jujutsu
+          nix-output-monitor
         ];
         text = builtins.readFile ../../contrib/scrub-commit-history.sh;
       };
