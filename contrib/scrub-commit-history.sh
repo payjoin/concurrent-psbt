@@ -35,6 +35,14 @@ Options:
   --log-revset          use the VCS's own default revset (skip default range)
   --everything          scrub all branches (jj: all() ~ root(); git: --all)
 
+Quick pre-check (all-checks mode only):
+  The flake may define checks.\$system.quick — a lightweight fast-feedback subset.
+
+  --quick            shorthand for --quick=only
+  --quick=only      run only checks.\$system.quick; implies --fail-fast
+  --quick=first     (default) run quick as a separate pre-phase, then all checks
+  --quick=deferred  no separate pre-phase; quick runs as part of all checks
+
 Extra arguments are passed through as-is to jj log or git rev-list.
 A single bookmark/branch name or commit hash works in both modes.
 
@@ -56,6 +64,7 @@ vcs_mode=auto
 everything=false
 use_log_revset=false
 fail_fast=false
+quick=auto # auto resolves after arg parsing
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -80,15 +89,48 @@ while [ $# -gt 0 ]; do
   --no-flake-checks) run_flake_checks=false ;;
   --no-nom) use_nom=false ;;
   --fail-fast) fail_fast=true ;;
+  --quick) quick=only ;;
+  --quick=*) quick="${1#--quick=}" ;;
   -k | --keep-going | -L | --print-build-logs) nix_build_args+=("$1") ;;
   *) log_args+=("$1") ;;
   esac
   shift
 done
 
+# Resolve --quick before validation (--quick=only implies --fail-fast)
+case "$quick" in
+only)
+  if [ ${#check_names[@]} -gt 0 ]; then
+    echo "error: --quick=only cannot be combined with --check" >&2
+    exit 1
+  fi
+  fail_fast=true
+  ;;
+first | deferred | auto) ;;
+*)
+  echo "error: --quick expects only|first|deferred (got '$quick')" >&2
+  exit 1
+  ;;
+esac
+
+# In all-checks mode (no --check), default quick to 'first'; else no quick
+if [ "$quick" = auto ]; then
+  if [ ${#check_names[@]} -eq 0 ]; then
+    quick=first
+  else
+    quick=none
+  fi
+fi
+
 # --all-checks and --check are mutually exclusive
 if [ "$all_checks" = true ] && [ ${#check_names[@]} -gt 0 ]; then
   echo "error: --all-checks cannot be combined with --check" >&2
+  exit 1
+fi
+
+# --quick=only and --all-checks conflict: --quick=only skips the full phase
+if [ "$quick" = only ] && [ "$all_checks" = true ]; then
+  echo "error: --quick=only cannot be combined with --all-checks" >&2
   exit 1
 fi
 
@@ -328,6 +370,15 @@ for hash in "${linear[@]}"; do
   fi
 done
 
+declare -A no_quick
+for hash in "${linear[@]}"; do
+  if [ "$quick" = first ] || [ "$quick" = only ]; then
+    if [ -z "${no_flake[$hash]:-}" ] && ! check_exists "git+file://$repo_root?rev=$hash#checks.$system.quick"; then
+      no_quick[$hash]=1
+    fi
+  fi
+done
+
 # Pre-compute EXPECT-FAIL check names per commit
 declare -A expect_fail_check
 for hash in "${linear[@]}"; do
@@ -405,9 +456,26 @@ if git cat-file -e "$tip_hash:.gitignore" 2>/dev/null; then
   fi
 fi
 
-# Flake check phase (skipped with --no-flake-checks)
+# Quick pre-check (--quick=first, all-checks mode only)
 build_failed=()
-if [ "$run_flake_checks" = true ]; then
+if [ "$run_flake_checks" = true ] && [ "$quick" = first ]; then
+  echo "Quick pre-check: running checks.$system.quick ($order)..."
+  for idx in "${ordered[@]}"; do
+    hash=${linear[$idx]}
+    git log -1 --format='%B' "$hash" | grep -qE '\[EXPECT-FAIL: [^]]+\]' && continue
+    [ -z "${no_flake[$hash]:-}" ] || continue
+    [ -z "${no_quick[$hash]:-}" ] || continue
+    target="git+file://$repo_root?rev=$hash#checks.$system.quick"
+    if ! nix_build "$target"; then
+      echo "  ✗ $(fmt_commit "$hash") (quick failed)"
+      build_failed+=("$hash")
+      if [ "$fail_fast" = true ]; then break; fi
+    fi
+  done
+fi
+
+# Flake check phase (skipped with --no-flake-checks or --quick=only)
+if [ "$run_flake_checks" = true ] && [ "$quick" != only ]; then
   echo "Flake check phase: verifying $total commits ($order)..."
   for idx in "${ordered[@]}"; do
     hash=${linear[$idx]}
