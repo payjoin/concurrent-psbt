@@ -5,6 +5,12 @@
 # markers in messages and optionally runs nix flake check on each.
 set -euo pipefail
 
+# Kill entire process group on interrupt for responsive ^C
+for sig in INT TERM; do
+  # shellcheck disable=SC2064 # intentional: expand $sig now to bake in the signal name
+  trap "trap - INT TERM; kill -$sig 0" "$sig"
+done
+
 usage() {
   cat >&2 <<EOF
 Usage: ${0##*/} [options] [-- <revset-args>...]
