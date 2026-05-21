@@ -14,7 +14,7 @@
         "rust-src"
       ];
 
-      toolchains = {
+      rustToolchains = {
         nightly = pkgs.rust-bin.selectLatestNightlyWith (
           t:
           t.default.override {
@@ -28,6 +28,9 @@
           extensions = commonExtensions;
         };
       };
+
+      mkCraneLib = _: rust: (inputs.crane.mkLib pkgs).overrideToolchain rust;
+      toolchains = builtins.mapAttrs mkCraneLib rustToolchains;
     in
     {
       _module.args = {
