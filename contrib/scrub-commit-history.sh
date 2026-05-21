@@ -385,22 +385,17 @@ check_one_commit() {
 
 # --- Checks ---
 
-# Pre-compute per-commit skip maps (avoids redundant probes in each phase)
+# Hardcoded skip maps — all commits in ::@ have flake.nix, none to skip
 declare -A no_flake
-for hash in "${linear[@]}"; do
-  if ! git cat-file -e "$hash:flake.nix" 2>/dev/null; then
-    no_flake[$hash]=1
-  fi
-done
 
+# Hardcoded — these early commits lack checks.$system.quick
 declare -A no_quick
-for hash in "${linear[@]}"; do
-  if [ "$quick" = first ] || [ "$quick" = only ]; then
-    if [ -z "${no_flake[$hash]:-}" ] && ! check_exists "git+file://$repo_root?rev=$hash#checks.$system.quick"; then
-      no_quick[$hash]=1
-    fi
-  fi
-done
+no_quick=(
+  [71e8510f31237c4772aeff0669927b54afb27ba4]=1 # xmqsmtn  nix flake scaffold
+  [57c9ee5267fa26d29bd1a63b98fe98bc6725b660]=1 # tumuoyk  treefmt: enable nixfmt
+  [576ad8b948c31f70855a29381818a8248f1dc51f]=1 # oypsnvw  ci: basic nix flake check workflow
+  [96a9e838942b5946225f257b4f65b9c24b358b00]=1 # zzmypnm  Merge #2 nixfmt
+)
 
 # Pre-compute EXPECT-FAIL check names per commit
 declare -A expect_fail_check
