@@ -124,6 +124,27 @@ fmt_commit() {
 }
 
 # Check each commit message for unresolved work-item markers
+# Conflict check — jj conflict trees and git conflict markers
+conflict_failed=()
+echo "Checking for conflicts..."
+for hash in "${linear[@]}"; do
+  reason=""
+  if git ls-tree --name-only "$hash" 2>/dev/null | grep -qE '^\.jj(conflict-|-do-not-resolve)'; then
+    reason="jj conflict tree"
+  elif git grep -q -E '<{7}|>{7}|={7}' "$hash" -- 2>/dev/null; then
+    reason="conflict markers"
+  fi
+  if [ -n "$reason" ]; then
+    echo "  ✗ $(fmt_commit "$hash") ($reason)"
+    conflict_failed+=("$hash")
+  fi
+done
+if [ "${#conflict_failed[@]}" -gt 0 ]; then
+  echo "${#conflict_failed[@]} commit(s) have unresolved conflicts"
+else
+  echo "  all clean"
+fi
+
 msg_failed=()
 echo "Checking commit messages..."
 for hash in "${linear[@]}"; do
@@ -168,12 +189,15 @@ if git cat-file -e "$tip_hash:.gitignore" 2>/dev/null; then
 fi
 
 # Summary
-n_issues=$((${#msg_failed[@]} + ${#gitignore_failed[@]}))
+n_issues=$((${#conflict_failed[@]} + ${#msg_failed[@]} + ${#gitignore_failed[@]}))
 if [ "$n_issues" -eq 0 ]; then
   echo "All $total commits passed."
 else
   echo
   echo "$n_issues issue(s):"
+  for h in "${conflict_failed[@]}"; do
+    echo "  conflict: $(fmt_commit "$h")"
+  done
   for h in "${msg_failed[@]}"; do
     echo "  message: $(fmt_commit "$h")"
   done
