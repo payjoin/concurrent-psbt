@@ -11,8 +11,35 @@
     }:
     let
       rev = inputs.self.shortRev or "dirty";
-      src = inputs.self;
-      checks = {
+      src = commonArgs.src;
+
+      profiles = {
+        dev = "dev";
+        release = "release";
+      };
+
+      mkTestCheck =
+        profile: craneLib:
+        let
+          deps = craneLib.buildDepsOnly (commonArgs // { CARGO_PROFILE = profile; });
+        in
+        craneLib.cargoNextest {
+          inherit src;
+          strictDeps = true;
+          cargoArtifacts = deps;
+          CARGO_PROFILE = profile;
+          cargoNextestExtraArgs = "--no-tests=warn";
+        };
+
+      testChecks = pkgs.lib.concatMapAttrs (
+        tcName: craneLib:
+        pkgs.lib.mapAttrs' (
+          profName: profile:
+          pkgs.lib.nameValuePair "tests-${tcName}-${profName}" (mkTestCheck profile craneLib)
+        ) profiles
+      ) toolchains;
+
+      checks = testChecks // {
         build = toolchains.nightly.buildPackage (commonArgs // { cargoArtifacts = cargoArtifactsRelease; });
 
         clippy = toolchains.nightly.cargoClippy (
@@ -38,6 +65,7 @@
         quick = pkgs.symlinkJoin {
           name = "quick-checks";
           paths = [
+            checks.tests-nightly-dev
             checks.clippy
           ];
         };
