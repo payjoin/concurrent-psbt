@@ -99,6 +99,10 @@
             checks.no-todo-comments
           ];
         };
+        nightly = pkgs.symlinkJoin {
+          name = "nightly-checks";
+          paths = builtins.attrValues checks;
+        };
       };
     };
 }
