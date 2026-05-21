@@ -15,6 +15,11 @@ usage() {
   cat >&2 <<EOF
 Usage: ${0##*/} [options] [-- <revset-args>...]
 
+Sequential ordering (default: --reverse):
+  --forward      first to last (CI: verify whole history)
+  --reverse      last to first (development: find recent breakage)
+  --bisect       midpoint first (rewriting: find breakage fast)
+
 Options:
   -h, --help            show this help
   -L, --print-build-logs  print build logs
@@ -39,6 +44,7 @@ EOF
   exit 1
 }
 
+order=reverse
 run_flake_checks=true
 check_names=()
 no_skip_missing=false
@@ -52,6 +58,9 @@ use_log_revset=false
 while [ $# -gt 0 ]; do
   case "$1" in
   -h | --help) usage ;;
+  --forward) order=forward ;;
+  --reverse) order=reverse ;;
+  --bisect) order=bisect ;;
   --log=*) vcs_mode="${1#--log=}" ;;
   --git) vcs_mode=git ;;
   --everything) everything=true ;;
@@ -175,6 +184,35 @@ if [ "$total" -eq 0 ]; then
   echo "No commits in range."
   exit 0
 fi
+
+# Build index ordering for traversal
+# ordered[] contains indices into linear[] (not hashes)
+case "$order" in
+forward)
+  ordered=()
+  for ((i = total - 1; i >= 0; i--)); do ordered+=("$i"); done
+  ;;
+reverse)
+  ordered=()
+  for ((i = 0; i < total; i++)); do ordered+=("$i"); done
+  ;;
+bisect)
+  # BFS on midpoints — finds failures in O(log n) for sparse breakage
+  ordered=()
+  queue=("0 $((total - 1))")
+  while [ ${#queue[@]} -gt 0 ]; do
+    pair=${queue[0]}
+    queue=("${queue[@]:1}")
+    lo=${pair%% *}
+    hi=${pair##* }
+    if [ "$lo" -gt "$hi" ]; then continue; fi
+    mid=$(((lo + hi) / 2))
+    ordered+=("$mid")
+    if [ "$lo" -lt "$mid" ]; then queue+=("$lo $((mid - 1))"); fi
+    if [ "$mid" -lt "$hi" ]; then queue+=("$((mid + 1)) $hi"); fi
+  done
+  ;;
+esac
 
 fmt_commit() {
   if [ "$vcs_mode" = jj ]; then
@@ -300,7 +338,8 @@ done
 # Conflict check — jj conflict trees and git conflict markers
 conflict_failed=()
 echo "Checking for conflicts..."
-for hash in "${linear[@]}"; do
+for idx in "${ordered[@]}"; do
+  hash=${linear[$idx]}
   reason=""
   if git ls-tree --name-only "$hash" 2>/dev/null | grep -qE '^\.jj(conflict-|-do-not-resolve)'; then
     reason="jj conflict tree"
@@ -320,7 +359,8 @@ fi
 
 msg_failed=()
 echo "Checking commit messages..."
-for hash in "${linear[@]}"; do
+for idx in "${ordered[@]}"; do
+  hash=${linear[$idx]}
   if git log -1 --format='%B' "$hash" | grep -qE '^\s*[#\[]*\s*(TODO|FIXME|WIP)\b|\bfixup! |\bsquash! '; then
     echo "  ✗ $(fmt_commit "$hash")"
     msg_failed+=("$hash")
@@ -344,7 +384,8 @@ if git cat-file -e "$tip_hash:.gitignore" 2>/dev/null; then
   cp "$tmpdir/.gitignore" "$tmpdir/repo/.gitignore"
 
   echo "Checking gitignore monotonicity..."
-  for hash in "${linear[@]}"; do
+  for idx in "${ordered[@]}"; do
+    hash=${linear[$idx]}
     leaked=$(git ls-tree -r --name-only "$hash" 2>/dev/null |
       git -C "$tmpdir/repo" check-ignore --stdin 2>/dev/null || true)
     if [ -n "$leaked" ]; then
@@ -364,8 +405,9 @@ fi
 # Flake check phase (skipped with --no-flake-checks)
 build_failed=()
 if [ "$run_flake_checks" = true ]; then
-  echo "Flake check phase: verifying $total commits..."
-  for hash in "${linear[@]}"; do
+  echo "Flake check phase: verifying $total commits ($order)..."
+  for idx in "${ordered[@]}"; do
+    hash=${linear[$idx]}
     check_one_commit "$hash" || true
   done
 fi
