@@ -22,8 +22,6 @@ jobs:
           fetch-depth: ${{ steps.fetch-depth.outputs.depth }}
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: Initialize jj workspace
-        run: nix run nixpkgs#jujutsu -- git init --colocate
       - name: Scrub commit history
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
