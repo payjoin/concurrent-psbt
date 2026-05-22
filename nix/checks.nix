@@ -38,6 +38,25 @@
           }
         );
 
+      mkMutants =
+        suffix: features:
+        toolchains.nightly.mkCargoDerivation (
+          commonArgs
+          // {
+            cargoArtifacts = cargoArtifactsDev;
+            CARGO_PROFILE = "dev";
+            pnameSuffix = "-mutants${suffix}";
+            nativeBuildInputs = [
+              pkgs.cargo-mutants
+              pkgs.cargo-nextest
+            ];
+            buildPhaseCargoCommand = ''
+              cargo mutants --in-place --test-tool nextest --no-default-features --features ${features}
+            '';
+            installPhase = "mkdir -p $out";
+          }
+        );
+
       testChecks = pkgs.lib.concatMapAttrs (
         tcName: craneLib:
         pkgs.lib.mapAttrs' (
@@ -70,6 +89,9 @@
             installPhase = "true";
           }
         );
+
+        mutants-unit = mkMutants "-unit" "unit-tests";
+        mutants-prop = mkMutants "-prop" "prop-tests";
 
         clippy = toolchains.nightly.cargoClippy (
           checkArgs
@@ -143,7 +165,19 @@
         };
         nightly = pkgs.symlinkJoin {
           name = "nightly-checks-${rev}";
-          paths = builtins.attrValues checks;
+          paths = builtins.attrValues (
+            removeAttrs checks [
+              "mutants-unit"
+              "mutants-prop"
+            ]
+          );
+        };
+        mutants = pkgs.symlinkJoin {
+          name = "mutants-checks";
+          paths = [
+            checks.mutants-unit
+            checks.mutants-prop
+          ];
         };
       };
     };
