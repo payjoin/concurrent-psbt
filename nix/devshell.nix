@@ -13,6 +13,7 @@
           packages = with pkgs; [
             cargo-llvm-cov
             cargo-nextest
+            config.packages.scrub-commit-history
             config.treefmt.build.wrapper
             just
             rust-analyzer
