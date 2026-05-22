@@ -253,7 +253,9 @@ else
     if [ -n "$merge_base" ]; then
       mapfile -t linear < <(git rev-list "$merge_base..HEAD" 2>/dev/null)
     else
-      mapfile -t linear < <(git rev-list HEAD 2>/dev/null)
+      echo "error: could not find merge-base with origin/main" >&2
+      echo "(hint: use -- -r <revset> to specify commits explicitly)" >&2
+      exit 1
     fi
   fi
 fi
