@@ -13,6 +13,8 @@
       };
     in
     {
+      packages.scrub-commit-history = scrub-commit-history;
+
       apps.scrub-commit-history = {
         type = "app";
         program = "${scrub-commit-history}/bin/scrub-commit-history";
