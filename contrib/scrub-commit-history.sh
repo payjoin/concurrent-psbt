@@ -323,6 +323,10 @@ expect_fail_matches_checks() {
 # Appends to build_failed[] on failure.
 check_one_commit() {
   local hash=$1
+  if [ -n "${conflict_skip[$hash]:-}" ]; then
+    echo "  - $(fmt_commit "$hash") (skipped: conflict)"
+    return 0
+  fi
   if [ -n "${no_flake[$hash]:-}" ]; then
     if [ "$no_skip_missing" = true ]; then
       echo "  ✗ $(fmt_commit "$hash") (no flake.nix)"
@@ -407,18 +411,6 @@ for hash in "${linear[@]}"; do
   fi
 done
 
-# Build phase-specific ordered arrays (pre-filtered)
-flake_ordered=()
-quick_ordered=()
-for idx in "${ordered[@]}"; do
-  hash=${linear[$idx]}
-  [ -z "${no_flake[$hash]:-}" ] || continue
-  flake_ordered+=("$idx")
-  [ -z "${no_quick[$hash]:-}" ] || continue
-  quick_ordered+=("$idx")
-done
-
-# Check each commit message for unresolved work-item markers
 # Conflict check — jj conflict trees and git conflict markers
 conflict_failed=()
 echo "Checking for conflicts..."
@@ -440,6 +432,22 @@ if [ "${#conflict_failed[@]}" -gt 0 ]; then
 else
   echo "  all clean"
 fi
+
+# Build skip map so flake checks are not wasted on conflicted commits
+declare -A conflict_skip
+for h in "${conflict_failed[@]}"; do conflict_skip[$h]=1; done
+
+# Build phase-specific ordered arrays (pre-filtered)
+flake_ordered=()
+quick_ordered=()
+for idx in "${ordered[@]}"; do
+  hash=${linear[$idx]}
+  [ -z "${conflict_skip[$hash]:-}" ] || continue
+  [ -z "${no_flake[$hash]:-}" ] || continue
+  flake_ordered+=("$idx")
+  [ -z "${no_quick[$hash]:-}" ] || continue
+  quick_ordered+=("$idx")
+done
 
 msg_failed=()
 echo "Checking commit messages..."
