@@ -54,18 +54,17 @@
           // {
             cargoArtifacts = cargoArtifactsDev;
             pnameSuffix = "-coverage";
-            nativeBuildInputs = [ pkgs.cargo-llvm-cov ];
+            nativeBuildInputs = with pkgs; [
+              cargo-llvm-cov
+              cargo-nextest
+            ];
             buildPhaseCargoCommand = ''
+              cargo llvm-cov nextest --no-report --no-tests=warn --all-features
+
               mkdir -p $out
-              cargo llvm-cov --all-features --lcov --output-path $out/coverage.lcov || {
-                # no coverage data when there are no tests yet
-                if [ ! -s $out/coverage.lcov ]; then
-                  echo "no coverage data (no tests), skipping assertion"
-                  exit 0
-                fi
-                exit 1
-              }
-              cargo llvm-cov report --fail-under-regions 100
+              if [ -f target/llvm-cov-target/source.profdata ]; then
+                cargo llvm-cov report --lcov --output-path $out/coverage.lcov --fail-under-regions 100
+              fi
             '';
             installPhase = "true";
           }
