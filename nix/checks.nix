@@ -126,19 +126,19 @@
       checks = checks // {
         quick = pkgs.symlinkJoin {
           name = "quick-checks-${rev}";
-          paths = [
-            checks.tests-nightly-dev
-            checks.clippy
+          paths = with checks; [
+            tests-nightly-dev
+            clippy
           ];
         };
         lint = pkgs.symlinkJoin {
           name = "lint-checks-${rev}";
-          paths = [
-            checks.cargo-sort
-            checks.clippy
-            checks.doc
-            checks.unused-lints
-            checks.no-todo-comments
+          paths = with checks; [
+            cargo-sort
+            clippy
+            doc
+            unused-lints
+            no-todo-comments
           ];
         };
         nightly = pkgs.symlinkJoin {
