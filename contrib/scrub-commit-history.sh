@@ -240,30 +240,36 @@ fi
 
 # Resolve revsets to git commit IDs
 if [ "$vcs_mode" = jj ]; then
+  jj_args=(log --ignore-working-copy --no-graph -T 'commit_id ++ "\n"')
   if [ ${#log_args[@]} -gt 0 ]; then
-    jj_args=(log --ignore-working-copy --no-graph -T 'commit_id ++ "\n"')
     jj_args+=("${log_args[@]}")
-    mapfile -t linear < <(jj "${jj_args[@]}" 2>/dev/null | grep -vE '^0*$')
-  elif [ "$use_log_revset" = true ]; then
-    # Use jj's configured default log revset (no -r flag)
-    mapfile -t linear < <(jj log --ignore-working-copy --no-graph -T 'commit_id ++ "\n"' 2>/dev/null | grep -vE '^0*$')
-  else
-    # Default: all ancestors of working copy (excluding root)
-    mapfile -t linear < <(jj log --ignore-working-copy --no-graph -r 'trunk()..@' -T 'commit_id ++ "\n"' 2>/dev/null | grep -vE '^0*$')
+  elif [ "$use_log_revset" = false ]; then
+    jj_args+=(-r 'trunk()..@')
   fi
+  if ! jj_output=$(jj "${jj_args[@]}"); then
+    echo "error: jj failed to resolve revset" >&2
+    exit 1
+  fi
+  mapfile -t linear < <(printf '%s\n' "$jj_output" | grep -vE '^0*$')
 else
+  git_args=(rev-list)
   if [ ${#log_args[@]} -gt 0 ]; then
-    mapfile -t linear < <(git rev-list "${log_args[@]}" 2>/dev/null)
+    git_args+=("${log_args[@]}")
   elif [ "$use_log_revset" = true ]; then
-    mapfile -t linear < <(git rev-list HEAD 2>/dev/null)
+    git_args+=(HEAD)
   else
     merge_base=$(git merge-base HEAD origin/main 2>/dev/null || true)
     if [ -n "$merge_base" ]; then
-      mapfile -t linear < <(git rev-list "$merge_base..HEAD" 2>/dev/null)
+      git_args+=("$merge_base..HEAD")
     else
-      mapfile -t linear < <(git rev-list HEAD 2>/dev/null)
+      git_args+=(HEAD)
     fi
   fi
+  if ! git_output=$(git "${git_args[@]}"); then
+    echo "error: git failed to resolve revset" >&2
+    exit 1
+  fi
+  mapfile -t linear < <(printf '%s\n' "$git_output" | grep -vE '^0*$')
 fi
 
 total=${#linear[@]}
