@@ -5,3 +5,8 @@ edition = "2024"
 
 [lints]
 workspace = true
+
+[features]
+default = ["unit-tests", "prop-tests"]
+unit-tests = []
+prop-tests = []
